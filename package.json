@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "type": "module",
+  "name": "techscope",
+  "description": "Build scripts for the TechScope extension (the extension itself runs in the browser)."
+}

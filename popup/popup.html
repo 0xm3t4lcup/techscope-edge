@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>TechScope</title>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../icons/icon32.png" width="20" height="20" alt="" />
+      <span>TechScope</span>
+    </div>
+    <div class="actions">
+      <button id="rescanBtn" title="Re-scan this page">⟳</button>
+      <button id="exportBtn" title="Export as JSON">⤓</button>
+    </div>
+  </header>
+
+  <div class="site">
+    <span id="host">—</span>
+    <span id="count" class="pill">0</span>
+  </div>
+
+  <input id="search" type="search" placeholder="Filter technologies…" autocomplete="off" />
+
+  <div id="results" class="results">
+    <div class="empty" id="empty">Scanning…</div>
+  </div>
+
+  <footer>
+    <span id="dbinfo">—</span>
+    <span class="muted">client-side detection</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Generated fingerprint data — rebuild with:  node build-tech.mjs --fetch
+# (derived from enthec/webappanalyzer, MIT; not redistributed here)
+data/technologies.json
+data/categories.json
+data/groups.json
+data/meta.json
+build-version.txt
+
+# Local
+*.log
+node_modules/
+.DS_Store
+Thumbs.db
