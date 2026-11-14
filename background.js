@@ -184,8 +184,8 @@ async function saveHistory(url, results) {
 // ---- Shodan / VirusTotal lookups -------------------------------------------
 // Keys are stored locally and only ever sent to Shodan / VirusTotal directly.
 async function getKeys() {
-  const { shodanKey = "", vtKey = "" } = await chrome.storage.local.get(["shodanKey", "vtKey"]);
-  return { shodanKey: shodanKey.trim(), vtKey: vtKey.trim() };
+  const { shodanKey = "", vtKey = "", mbKey = "" } = await chrome.storage.local.get(["shodanKey", "vtKey", "mbKey"]);
+  return { shodanKey: shodanKey.trim(), vtKey: vtKey.trim(), mbKey: mbKey.trim() };
 }
 
 const isIp = (s) => /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || (s.includes(":") && /^[0-9a-f:]+$/i.test(s));
@@ -593,12 +593,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       await chrome.storage.local.set({ history: {} });
       sendResponse({ ok: true });
     } else if (msg?.type === "getKeys") {
-      const { shodanKey, vtKey } = await getKeys();
-      sendResponse({ shodanSet: !!shodanKey, vtSet: !!vtKey }); // never echo the keys
+      const { shodanKey, vtKey, mbKey } = await getKeys();
+      sendResponse({ shodanSet: !!shodanKey, vtSet: !!vtKey, mbSet: !!mbKey }); // never echo the keys
     } else if (msg?.type === "setKeys") {
       const patch = {};
       if (typeof msg.shodanKey === "string") patch.shodanKey = msg.shodanKey.trim();
       if (typeof msg.vtKey === "string") patch.vtKey = msg.vtKey.trim();
+      if (typeof msg.mbKey === "string") patch.mbKey = msg.mbKey.trim();
       await chrome.storage.local.set(patch);
       sendResponse({ ok: true });
     } else if (msg?.type === "shodan") {

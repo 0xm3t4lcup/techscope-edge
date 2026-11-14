@@ -224,8 +224,9 @@ async function runVt(fresh) {
     html += kv("SHA-256", d.sha256);
     html += kv("MD5", d.md5);
     if (d.names?.length) html += kv("Other names", d.names.join(", "));
-    html += `<button id="vtDownloadBtn" class="scan-btn" data-hash="${esc(d.sha256 || d.query)}">⤓ Download sample</button>`;
-    html += `<div class="note">Requires a VirusTotal Premium/Enterprise key. The downloaded file is a live sample — handle it only in an isolated/sandboxed environment.</div>`;
+    html += `<button id="vtDownloadBtn" class="scan-btn" data-hash="${esc(d.sha256 || d.query)}">⤓ Download sample (VT Premium)</button>`;
+    html += `<button id="mbDownloadBtn" class="scan-btn" data-hash="${esc(d.sha256 || d.query)}">⤓ MalwareBazaar (keyless)</button>`;
+    html += `<div class="note">VirusTotal download needs a Premium key; MalwareBazaar is keyless and returns a ZIP (password: <code>infected</code>). Live samples — handle only in an isolated/sandboxed environment.</div>`;
   } else if (d.kind === "ip") {
     html += kv("AS owner", d.asOwner);
     html += kv("ASN", d.asn);
@@ -246,6 +247,34 @@ async function runVt(fresh) {
     dl.disabled = false;
     if (r?.ok) { dl.textContent = "✓ Download started"; }
     else { dl.textContent = label; const e = document.createElement("div"); e.className = "err"; e.textContent = r?.error || "Download failed"; $("vt").appendChild(e); }
+  });
+
+  const mb = $("mbDownloadBtn");
+  if (mb) mb.addEventListener("click", async () => {
+    const label = mb.textContent; mb.disabled = true; mb.textContent = "Downloading…";
+    try {
+      const { mbKey = "" } = await chrome.storage.local.get("mbKey");
+      const fd = new FormData();
+      fd.append("query", "get_file");
+      fd.append("sha256_hash", mb.dataset.hash);
+      const headers = {}; if (mbKey.trim()) headers["Auth-Key"] = mbKey.trim();
+      const r = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", body: fd, headers });
+      const ct = r.headers.get("content-type") || "";
+      if (ct.includes("json") || ct.includes("text")) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.query_status === "file_not_found"
+          ? "Not found on MalwareBazaar."
+          : (j.query_status || "MalwareBazaar error — it may now require a free Auth-Key (add it in Settings)."));
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = mb.dataset.hash + ".zip"; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      mb.textContent = "✓ Downloaded (zip pw: infected)";
+    } catch (e) {
+      mb.textContent = label;
+      const n = document.createElement("div"); n.className = "err"; n.textContent = String(e.message || e); $("vt").appendChild(n);
+    } finally { mb.disabled = false; }
   });
 }
 $("vtBtn").addEventListener("click", () => runVt(false));
@@ -273,10 +302,11 @@ async function loadKeyStatus() {
   const r = await send({ type: "getKeys" });
   $("shodanStatus").textContent = r?.shodanSet ? "key saved ✓" : "not set";
   $("vtStatus").textContent = r?.vtSet ? "key saved ✓" : "not set";
+  $("mbStatus").textContent = r?.mbSet ? "key saved ✓" : "not set (keyless downloads still work)";
 }
 $("saveKeysBtn").addEventListener("click", async () => {
-  await send({ type: "setKeys", shodanKey: $("shodanKey").value, vtKey: $("vtKey").value });
-  $("shodanKey").value = ""; $("vtKey").value = "";
+  await send({ type: "setKeys", shodanKey: $("shodanKey").value, vtKey: $("vtKey").value, mbKey: $("mbKey").value });
+  $("shodanKey").value = ""; $("vtKey").value = ""; $("mbKey").value = "";
   loadKeyStatus();
   flash($("saveKeysBtn"));
 });

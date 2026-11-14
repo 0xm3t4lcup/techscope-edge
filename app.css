@@ -43,6 +43,7 @@ input:focus { outline: none; border-color: var(--accent); }
 .tech { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; background: var(--card); border: 1px solid var(--line); margin-bottom: 4px; text-decoration: none; color: var(--text); }
 .tech:hover { border-color: var(--accent); }
 .tech .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.ava { width: 20px; height: 20px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex: none; }
 .tech .name { font-size: 13px; font-weight: 500; }
 .tech .ver { font-size: 11px; color: var(--sub); margin-left: 2px; }
 .tech .conf { margin-left: auto; font-size: 10px; color: var(--sub); }

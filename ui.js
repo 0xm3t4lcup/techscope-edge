@@ -6,6 +6,9 @@ export const palette = [
 ];
 export const colorFor = (s) => palette[[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % palette.length];
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+export const initial = (s) => { const m = String(s).match(/[A-Za-z0-9]/); return (m ? m[0] : "?").toUpperCase(); };
+// Original, generated letter-avatar icon (no third-party brand logos bundled).
+export const avatar = (name) => `<span class="ava" style="background:${colorFor(name)}">${esc(initial(name))}</span>`;
 
 export function renderTech(box, results, filter = "") {
   const f = filter.trim().toLowerCase();
@@ -30,7 +33,7 @@ export function renderTech(box, results, filter = "") {
       const conf = t.confidence < 100 ? `<span class="conf">${t.confidence}%</span>` : "";
       const tag = t.website ? "a" : "div";
       const href = t.website ? ` href="${esc(t.website)}" target="_blank" rel="noopener"` : "";
-      html += `<${tag} class="tech"${href}><span class="dot" style="background:${colorFor(t.name)}"></span><span class="name">${esc(t.name)}</span>${ver}${conf}</${tag}>`;
+      html += `<${tag} class="tech"${href}>${avatar(t.name)}<span class="name">${esc(t.name)}</span>${ver}${conf}</${tag}>`;
     }
   }
   box.innerHTML = html;
