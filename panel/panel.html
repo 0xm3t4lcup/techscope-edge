@@ -37,12 +37,14 @@
   </section>
 
   <section id="panel-shodan" class="panel-view">
-    <button id="shodanBtn" class="scan-btn">Look up host on Shodan</button>
+    <input id="shodanTarget" class="field" type="text" placeholder="host or IP — blank = current site" autocomplete="off" />
+    <button id="shodanBtn" class="scan-btn">Look up on Shodan</button>
     <div id="shodan" class="results"></div>
   </section>
 
   <section id="panel-vt" class="panel-view">
-    <button id="vtBtn" class="scan-btn">Check domain on VirusTotal</button>
+    <input id="vtTarget" class="field" type="text" placeholder="domain — blank = current site" autocomplete="off" />
+    <button id="vtBtn" class="scan-btn">Check on VirusTotal</button>
     <div id="vt" class="results"></div>
   </section>
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TechScope",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Profiles the technologies a website is built with — CMS, frameworks, analytics, servers, CDNs, and more. Side panel with Shodan + VirusTotal lookups.",
   "minimum_chrome_version": "116",
   "permissions": [

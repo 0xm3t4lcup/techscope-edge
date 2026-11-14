@@ -42,30 +42,34 @@ $("exportBtn").addEventListener("click", () => {
 
 // ---- Shodan ----------------------------------------------------------------
 $("shodanBtn").addEventListener("click", async () => {
-  const host = hostOf(current.url);
+  const host = $("shodanTarget").value.trim() || hostOf(current.url);
   if (!host) return;
-  $("shodan").innerHTML = `<div class="empty">Querying Shodan…</div>`;
+  $("shodan").innerHTML = `<div class="empty">Querying ${esc(host)}…</div>`;
   const d = await send({ type: "shodan", host });
   if (!d || d.error) { $("shodan").innerHTML = `<div class="err">${esc(d?.error || "Lookup failed")}</div>`; return; }
   let html = "";
   const kv = (k, v) => v ? `<div class="kv"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>` : "";
   html += kv("IP", d.ip);
+  html += kv("Source", d.source === "internetdb" ? "Shodan InternetDB (keyless)" : "Shodan");
   html += kv("Organization", d.org);
   html += kv("Country", d.country);
   html += kv("OS", d.os);
   if (d.ports?.length) html += `<div class="kv"><span class="k">Open ports</span><span class="v">${d.ports.map((p) => `<span class="chip">${p}</span>`).join("")}</span></div>`;
-  if (d.vulns?.length) html += `<div class="kv"><span class="k">Vulnerabilities</span><span class="v">${d.vulns.slice(0, 40).map((v) => `<span class="chip bad">${esc(v)}</span>`).join("")}</span></div>`;
+  if (d.vulns?.length) html += `<div class="kv"><span class="k">Vulnerabilities</span><span class="v">${d.vulns.slice(0, 60).map((v) => `<span class="chip bad">${esc(v)}</span>`).join("")}</span></div>`;
+  if (d.hostnames?.length) html += kv("Hostnames", d.hostnames.join(", "));
+  if (d.tags?.length) html += `<div class="kv"><span class="k">Tags</span><span class="v">${d.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</span></div>`;
   if (d.services?.length) html += `<div class="cat-head">Services</div>` + d.services.map((s) =>
     `<div class="kv"><span class="k">:${s.port}${s.transport ? "/" + s.transport : ""}</span><span class="v">${esc(s.product || "—")}</span></div>`).join("");
-  if (d.note) html += `<div class="empty">${esc(d.note)}</div>`;
+  if (d.cpes?.length) html += `<div class="cat-head">CPEs</div>` + `<div class="kv"><span class="v">${d.cpes.slice(0, 40).map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</span></div>`;
+  if (d.note) html += `<div class="note">${esc(d.note)}</div>`;
   $("shodan").innerHTML = html || `<div class="empty">No data.</div>`;
 });
 
 // ---- VirusTotal ------------------------------------------------------------
 $("vtBtn").addEventListener("click", async () => {
-  const host = hostOf(current.url);
+  const host = $("vtTarget").value.trim() || hostOf(current.url);
   if (!host) return;
-  $("vt").innerHTML = `<div class="empty">Querying VirusTotal…</div>`;
+  $("vt").innerHTML = `<div class="empty">Querying ${esc(host)}…</div>`;
   const d = await send({ type: "vt", domain: host });
   if (!d || d.error) { $("vt").innerHTML = `<div class="err">${esc(d?.error || "Lookup failed")}</div>`; return; }
   const s = d.stats || {};

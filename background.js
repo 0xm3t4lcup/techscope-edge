@@ -152,29 +152,68 @@ async function getKeys() {
   return { shodanKey: shodanKey.trim(), vtKey: vtKey.trim() };
 }
 
-async function shodanLookup(host) {
-  const { shodanKey } = await getKeys();
-  if (!shodanKey) return { error: "No Shodan API key set (Settings tab)." };
+const isIp = (s) => /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || (s.includes(":") && /^[0-9a-f:]+$/i.test(s));
+
+// Resolve a hostname to an IP. Uses Shodan's resolver if a key is set, else a
+// keyless DNS-over-HTTPS lookup (dns.google) so the InternetDB fallback works.
+async function resolveIp(host, shodanKey) {
+  if (isIp(host)) return host;
+  if (shodanKey) {
+    try {
+      const r = await fetch(`https://api.shodan.io/dns/resolve?hostnames=${encodeURIComponent(host)}&key=${encodeURIComponent(shodanKey)}`);
+      if (r.ok) { const ip = (await r.json())[host]; if (ip) return ip; }
+    } catch {}
+  }
   try {
-    const r1 = await fetch(`https://api.shodan.io/dns/resolve?hostnames=${encodeURIComponent(host)}&key=${encodeURIComponent(shodanKey)}`);
-    if (r1.status === 401) return { error: "Invalid Shodan API key." };
-    if (!r1.ok) throw new Error("resolve HTTP " + r1.status);
-    const ip = (await r1.json())[host];
-    if (!ip) return { error: "Could not resolve host to an IP." };
-    const r2 = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(shodanKey)}`);
-    if (r2.status === 404) return { ip, ports: [], services: [], vulns: [], note: "No Shodan data indexed for this IP." };
-    if (!r2.ok) throw new Error("host HTTP " + r2.status);
-    const d = await r2.json();
+    const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=A`);
+    if (r.ok) { const a = ((await r.json()).Answer || []).filter((x) => x.type === 1).map((x) => x.data); if (a.length) return a[0]; }
+  } catch {}
+  return null;
+}
+
+// Keyless fallback: Shodan InternetDB (no API key, rate-limited, basic data).
+async function internetDb(ip, prefix) {
+  try {
+    const r = await fetch(`https://internetdb.shodan.io/${ip}`);
+    if (r.status === 404) return { source: "internetdb", ip, ports: [], vulns: [], note: (prefix || "") + "No data indexed for this IP." };
+    if (!r.ok) throw new Error("InternetDB HTTP " + r.status);
+    const d = await r.json();
     return {
-      ip, org: d.org || d.isp || "", country: d.country_name || "", os: d.os || "",
+      source: "internetdb", ip,
       ports: (d.ports || []).sort((a, b) => a - b),
-      vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
-      services: (d.data || []).slice(0, 30).map((s) => ({
-        port: s.port, transport: s.transport || "",
-        product: s.product || (s._shodan && s._shodan.module) || "",
-      })),
+      vulns: d.vulns || [], cpes: d.cpes || [], hostnames: d.hostnames || [], tags: d.tags || [],
+      note: (prefix || "") + "Keyless (Shodan InternetDB) — add an API key in Settings for full data.",
     };
   } catch (e) { return { error: String(e.message || e) }; }
+}
+
+async function shodanLookup(target) {
+  const host = (target || "").trim();
+  if (!host) return { error: "No target host/IP." };
+  const { shodanKey } = await getKeys();
+  const ip = await resolveIp(host, shodanKey);
+  if (!ip) return { error: "Could not resolve to an IP." };
+
+  if (shodanKey) {
+    try {
+      const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(shodanKey)}`);
+      if (r.status === 401) return { error: "Invalid Shodan API key." };
+      if (r.status === 404) return internetDb(ip, "No full Shodan record — "); // graceful fallback
+      if (r.ok) {
+        const d = await r.json();
+        return {
+          source: "shodan", ip, org: d.org || d.isp || "", country: d.country_name || "", os: d.os || "",
+          ports: (d.ports || []).sort((a, b) => a - b),
+          vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
+          services: (d.data || []).slice(0, 30).map((s) => ({
+            port: s.port, transport: s.transport || "",
+            product: s.product || (s._shodan && s._shodan.module) || "",
+          })),
+        };
+      }
+    } catch { /* fall through to keyless */ }
+  }
+  return internetDb(ip); // no key, or the authed call failed
 }
 
 async function vtLookup(domain) {

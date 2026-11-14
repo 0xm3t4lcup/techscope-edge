@@ -33,7 +33,10 @@ which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
   X-Content-Type-Options, framing protection, Referrer-Policy, Permissions-Policy)
   **A–F** from the headers already captured.
 - **Shodan** (side panel) — resolves the host to an IP and shows open ports,
-  services, org, country, and known CVEs. Requires a Shodan API key.
+  services, org, country, and known CVEs. Has an **IP/host override box** to look
+  up any target (not just the current tab). Works **without an API key** via the
+  keyless Shodan **InternetDB** fallback (basic ports/CVEs/CPEs); an API key adds
+  full service detail, org and geo.
 - **VirusTotal** (side panel) — domain reputation: malicious / suspicious /
   harmless engine counts, reputation score, categories. Requires a VT API key.
 - **History** — recently scanned sites and their stacks; clearable.
