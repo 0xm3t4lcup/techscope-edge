@@ -22,6 +22,16 @@ across **109 categories**, with **version extraction**, **confidence scores**, a
 | JS globals | injected **MAIN-world** probe | `window.React` ⇒ React |
 | DOM | injected DOM collector | selector presence |
 
+### Popup features
+- **Technologies** tab — detected stack grouped by category, with versions,
+  confidence, filter box, and links to each technology's site.
+- **Security** tab — grades the page's security response headers (HSTS, CSP,
+  X-Content-Type-Options, framing protection, Referrer-Policy, Permissions-Policy)
+  A–F from the headers already captured.
+- **History** tab — recently scanned sites and their detected stacks; clearable.
+- **Copy** (stack as Markdown) and **Export** (JSON) actions; toolbar badge shows
+  the number of technologies detected.
+
 ### About "Pro" features
 Wappalyzer's paid tier is mostly its **backend** (company/contact enrichment, lead
 lists, bulk lookups) which requires their servers and cannot be replicated locally.

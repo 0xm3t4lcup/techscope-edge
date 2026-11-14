@@ -64,6 +64,22 @@ chrome.webRequest.onHeadersReceived.addListener(
 
 // ---- analysis --------------------------------------------------------------
 
+function buildSecurity(headers) {
+  const h = headers || {};
+  const csp = h["content-security-policy"] || "";
+  const checks = [
+    { label: "HTTPS / HSTS", present: !!h["strict-transport-security"], value: h["strict-transport-security"] || "" },
+    { label: "Content-Security-Policy", present: !!csp, value: csp },
+    { label: "X-Content-Type-Options", present: !!h["x-content-type-options"], value: h["x-content-type-options"] || "" },
+    { label: "Framing protection", present: !!h["x-frame-options"] || /frame-ancestors/i.test(csp), value: h["x-frame-options"] || (/frame-ancestors/i.test(csp) ? "CSP frame-ancestors" : "") },
+    { label: "Referrer-Policy", present: !!h["referrer-policy"], value: h["referrer-policy"] || "" },
+    { label: "Permissions-Policy", present: !!h["permissions-policy"], value: h["permissions-policy"] || "" },
+  ];
+  const score = checks.filter((c) => c.present).length;
+  const grade = ["F", "F", "D", "C", "B", "A", "A"][score];
+  return { checks, score, total: checks.length, grade };
+}
+
 function buildResults(foundMap, ds) {
   const cats = ds.categories;
   const out = [];
@@ -104,11 +120,12 @@ async function analyze(tabId, url) {
 
   const headers = (await chrome.storage.session.get("hdr" + tabId))["hdr" + tabId] || {};
   const results = buildResults(detect(ds.compiled, signals, headers, jsValues), ds);
+  const security = buildSecurity(headers);
 
-  await chrome.storage.session.set({ ["res" + tabId]: { url: signals.url || url, results, ts: Date.now() } });
+  await chrome.storage.session.set({ ["res" + tabId]: { url: signals.url || url, results, security, ts: Date.now() } });
   setBadge(tabId, results.length);
   saveHistory(signals.url || url, results);
-  return results;
+  return { url: signals.url || url, results, security };
 }
 
 function setBadge(tabId, n) {
@@ -163,11 +180,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!tab) return sendResponse({ results: [], url: "" });
       const cached = (await chrome.storage.session.get("res" + tab.id))["res" + tab.id];
       if (cached && !msg.force && cached.url === tab.url) return sendResponse(cached);
-      const results = await analyze(tab.id, tab.url);
-      sendResponse({ results: results || [], url: tab.url });
+      const out = await analyze(tab.id, tab.url);
+      sendResponse(out || { results: [], url: tab.url, security: null });
     } else if (msg?.type === "history") {
       const { history = {} } = await chrome.storage.local.get("history");
       sendResponse({ history });
+    } else if (msg?.type === "clearHistory") {
+      await chrome.storage.local.set({ history: {} });
+      sendResponse({ ok: true });
     } else if (msg?.type === "meta") {
       const ds = await loadDataset();
       sendResponse({ meta: ds.meta });

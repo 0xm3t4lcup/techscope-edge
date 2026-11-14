@@ -14,6 +14,7 @@
     </div>
     <div class="actions">
       <button id="rescanBtn" title="Re-scan this page">⟳</button>
+      <button id="copyBtn" title="Copy stack">⧉</button>
       <button id="exportBtn" title="Export as JSON">⤓</button>
     </div>
   </header>
@@ -23,11 +24,31 @@
     <span id="count" class="pill">0</span>
   </div>
 
-  <input id="search" type="search" placeholder="Filter technologies…" autocomplete="off" />
+  <nav class="tabs">
+    <button class="tab active" data-tab="tech">Technologies</button>
+    <button class="tab" data-tab="security">Security</button>
+    <button class="tab" data-tab="history">History</button>
+  </nav>
 
-  <div id="results" class="results">
-    <div class="empty" id="empty">Scanning…</div>
-  </div>
+  <!-- Technologies -->
+  <section id="panel-tech" class="panel active">
+    <input id="search" type="search" placeholder="Filter technologies…" autocomplete="off" />
+    <div id="results" class="results"><div class="empty">Scanning…</div></div>
+  </section>
+
+  <!-- Security -->
+  <section id="panel-security" class="panel">
+    <div id="security" class="results"><div class="empty">—</div></div>
+  </section>
+
+  <!-- History -->
+  <section id="panel-history" class="panel">
+    <div class="history-head">
+      <span class="muted">Recently scanned sites</span>
+      <button id="clearHistBtn" class="link">clear</button>
+    </div>
+    <div id="history" class="results"><div class="empty">No history yet.</div></div>
+  </section>
 
   <footer>
     <span id="dbinfo">—</span>
