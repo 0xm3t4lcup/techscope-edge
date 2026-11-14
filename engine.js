@@ -15,13 +15,18 @@ export function parsePattern(pattern) {
     if (p.startsWith("version:")) version = p.slice(8);
     else if (p.startsWith("confidence:")) confidence = parseInt(p.slice(11), 10) || 100;
   }
-  let rx = null;
+  // Regex is compiled lazily (see rxOf) so patterns whose signal is absent — the
+  // vast majority of header/cookie/meta/js patterns — never cost a RegExp build.
   const src = parts[0];
-  if (src) {
-    try { rx = new RegExp(src, "i"); }
-    catch { try { rx = new RegExp(src.replace(/[^\x00-\x7F]/g, ""), "i"); } catch { rx = null; } }
-  }
-  return { rx, version, confidence, empty: src === "" };
+  return { src, version, confidence, empty: src === "", _rx: undefined };
+}
+
+// Lazily compile (and memoize) a pattern's RegExp; null if it never compiles.
+function rxOf(pat) {
+  if (pat._rx !== undefined) return pat._rx;
+  if (!pat.src) return (pat._rx = null);
+  try { return (pat._rx = new RegExp(pat.src, "i")); }
+  catch { try { return (pat._rx = new RegExp(pat.src.replace(/[^\x00-\x7F]/g, ""), "i")); } catch { return (pat._rx = null); } }
 }
 
 // Resolve "\1" / "\1?a:b" version templates against a regex match.
@@ -96,13 +101,15 @@ export function domSelectorsOf(compiled) {
 function testValue(pat, value) {
   // returns {matched, version} or null
   if (value == null) return null;
-  if (pat.empty || !pat.rx) return { matched: true, version: "" };
-  const m = pat.rx.exec(String(value));
+  if (pat.empty) return { matched: true, version: "" };
+  const rx = rxOf(pat);
+  if (!rx) return null;
+  const m = rx.exec(String(value));
   if (!m) return null;
   return { matched: true, version: resolveVersion(pat.version, m) };
 }
 
-export function detect(compiled, signals, headers, jsValues) {
+export function detect(compiled, signals, headers, jsValues, byName) {
   const found = new Map(); // name -> { confidence, version }
   const lcHeaders = {};
   for (const k in (headers || {})) lcHeaders[k.toLowerCase()] = headers[k];
@@ -139,8 +146,8 @@ export function detect(compiled, signals, headers, jsValues) {
     for (const d of t.dom) if ((signals.domMatches || {})[d.selector]) add(t.name, 100, "");
   }
 
-  // implies (chained) + excludes
-  const byName = new Map(compiled.map((t) => [t.name, t]));
+  // implies (chained) + excludes — reuse the prebuilt index when provided.
+  byName = byName || new Map(compiled.map((t) => [t.name, t]));
   let changed = true, guard = 0;
   while (changed && guard++ < 10) {
     changed = false;

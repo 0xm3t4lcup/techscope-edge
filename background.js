@@ -154,7 +154,7 @@ async function analyze(tabId, url) {
   } catch {}
 
   const headers = (await chrome.storage.session.get("hdr" + tabId))["hdr" + tabId] || {};
-  const results = buildResults(detect(ds.compiled, signals, headers, jsValues), ds);
+  const results = buildResults(detect(ds.compiled, signals, headers, jsValues, ds.byName), ds);
   enrichFromHeaders(results, headers, ds); // server name/version + powered-by fallback
   const security = buildSecurity(headers);
 
