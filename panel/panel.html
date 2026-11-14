@@ -39,12 +39,18 @@
   <section id="panel-shodan" class="panel-view">
     <input id="shodanTarget" class="field" type="text" placeholder="host or IP — blank = current site" autocomplete="off" />
     <button id="shodanBtn" class="scan-btn">Look up on Shodan</button>
+    <div class="row2">
+      <button id="shodanRefreshBtn" class="link">⟳ refresh</button>
+      <button id="shodanCopyBtn" class="link">⧉ copy report</button>
+      <button id="shodanExportBtn" class="link">⤓ export JSON</button>
+    </div>
     <div id="shodan" class="results"></div>
   </section>
 
   <section id="panel-vt" class="panel-view">
-    <input id="vtTarget" class="field" type="text" placeholder="domain — blank = current site" autocomplete="off" />
+    <input id="vtTarget" class="field" type="text" placeholder="domain, IP, or file hash — blank = current site" autocomplete="off" />
     <button id="vtBtn" class="scan-btn">Check on VirusTotal</button>
+    <div class="row2"><button id="vtRefreshBtn" class="link">⟳ refresh</button></div>
     <div id="vt" class="results"></div>
   </section>
 

@@ -102,6 +102,41 @@ function buildResults(foundMap, ds) {
   return out;
 }
 
+// Second detection method for servers/versions: parse response headers directly,
+// so the server name + version show even when the fingerprint dataset misses them.
+function catByName(ds, name) {
+  for (const id in ds.categories) if (ds.categories[id].name === name) return { id: +id, name, priority: ds.categories[id].priority || 0 };
+  return { id: 0, name, priority: 0 };
+}
+function parseNameVer(token) {
+  token = String(token || "").trim();
+  const m = token.match(/^([A-Za-z0-9 .+\-_]+?)[\/ ]v?(\d[\w.\-]*)/);
+  if (m) return { name: m[1].trim(), version: m[2] };
+  return { name: token.replace(/\s*\(.*$/, "").trim(), version: "" };
+}
+function enrichFromHeaders(results, headers, ds) {
+  const have = new Map(results.map((r) => [r.name.toLowerCase(), r]));
+  const add = (name, version, catName) => {
+    if (!name) return;
+    const ex = have.get(name.toLowerCase());
+    if (ex) { if (version && !ex.version) ex.version = version; return; }
+    const t = { name, version: version || "", confidence: 100, website: "", icon: "", categories: [catByName(ds, catName)], fromHeader: true };
+    results.push(t); have.set(name.toLowerCase(), t);
+  };
+  const H = headers || {};
+  if (H.server) for (const p of H.server.split(",")) { const { name, version } = parseNameVer(p); add(name, version, "Web servers"); }
+  if (H["x-powered-by"]) for (const p of H["x-powered-by"].split(",")) { const { name, version } = parseNameVer(p); add(name, version, "Web frameworks"); }
+  if (H["x-aspnet-version"]) add("ASP.NET", H["x-aspnet-version"], "Web frameworks");
+  if (H["x-aspnetmvc-version"]) add("ASP.NET MVC", H["x-aspnetmvc-version"], "Web frameworks");
+  if (H["x-generator"]) { const { name, version } = parseNameVer(H["x-generator"]); add(name, version, "Miscellaneous"); }
+  if (H["x-drupal-cache"] || H["x-drupal-dynamic-cache"]) add("Drupal", "", "CMS");
+  results.sort((a, b) => {
+    const pa = Math.max(0, ...a.categories.map((c) => c.priority));
+    const pb = Math.max(0, ...b.categories.map((c) => c.priority));
+    return pb - pa || a.name.localeCompare(b.name);
+  });
+}
+
 async function analyze(tabId, url) {
   if (!/^https?:/i.test(url || "")) return null;
   const ds = await loadDataset();
@@ -120,6 +155,7 @@ async function analyze(tabId, url) {
 
   const headers = (await chrome.storage.session.get("hdr" + tabId))["hdr" + tabId] || {};
   const results = buildResults(detect(ds.compiled, signals, headers, jsValues), ds);
+  enrichFromHeaders(results, headers, ds); // server name/version + powered-by fallback
   const security = buildSecurity(headers);
 
   await chrome.storage.session.set({ ["res" + tabId]: { url: signals.url || url, results, security, ts: Date.now() } });
@@ -307,6 +343,66 @@ async function rdapIp(ip) {
   } catch { return null; }
 }
 
+// Keyless IP geolocation (ipwho.is): coordinates + city/country + org/ISP/ASN.
+async function ipGeo(ip) {
+  try {
+    const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.success === false) return null;
+    const c = d.connection || {};
+    return {
+      city: d.city || "", region: d.region || "", country: d.country || "", countryCode: d.country_code || "",
+      lat: d.latitude, lon: d.longitude,
+      org: c.org || c.isp || "", isp: c.isp || "", asn: c.asn ? "AS" + c.asn : "",
+    };
+  } catch { return null; }
+}
+
+// Pivot on a domain: find the IPs/servers associated with it. Keyless path
+// resolves the domain + its subdomains + cert (SAN) names via DoH; with a key it
+// also runs a Shodan host-search for authoritative org/port/product per IP.
+async function relatedHosts(domain, dns, key) {
+  const names = new Set([domain]);
+  for (const s of (dns?.subdomains || [])) names.add(s.includes(".") ? s : s + "." + domain);
+  for (const c of (dns?.certs || [])) for (const n of (c.names || [])) {
+    const h = n.replace(/^\*\./, "");
+    if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(h)) names.add(h.toLowerCase());
+  }
+  const list = [...names].filter((n) => !n.includes("*")).slice(0, 40);
+
+  const ipMap = new Map(); // ip -> Set(hostnames)
+  await Promise.all(list.map(async (n) => {
+    for (const a of await doh(n, "A")) {
+      if (!/^\d+\.\d+\.\d+\.\d+$/.test(a.value)) continue;
+      if (!ipMap.has(a.value)) ipMap.set(a.value, new Set());
+      ipMap.get(a.value).add(n);
+    }
+  }));
+  const byIp = new Map();
+  for (const [ip, hs] of ipMap) byIp.set(ip, { ip, hostnames: [...hs].slice(0, 8), source: "dns" });
+
+  if (key) {
+    try {
+      const r = await fetch(`https://api.shodan.io/shodan/host/search?key=${encodeURIComponent(key)}&query=${encodeURIComponent("hostname:" + domain)}&minify=true`);
+      if (r.ok) {
+        const d = await r.json();
+        for (const m of (d.matches || []).slice(0, 60)) {
+          const ip = m.ip_str; if (!ip) continue;
+          const e = byIp.get(ip) || { ip, hostnames: [], source: "shodan" };
+          if (e.source === "dns") e.source = "dns+shodan";
+          e.org = m.org || e.org || "";
+          if (m.port) e.port = m.port;
+          if (m.product) e.product = m.product;
+          if (m.hostnames) e.hostnames = [...new Set([...(e.hostnames || []), ...m.hostnames])].slice(0, 8);
+          byIp.set(ip, e);
+        }
+      }
+    } catch {}
+  }
+  return [...byIp.values()].slice(0, 80);
+}
+
 async function shodanHost(ip, key) {
   const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(key)}`);
   if (r.status === 401) return { error: "Invalid Shodan API key." };
@@ -316,6 +412,7 @@ async function shodanHost(ip, key) {
   return {
     source: "shodan", ip, org: d.org || "", isp: d.isp || "", asn: d.asn || "", os: d.os || "",
     city: d.city || "", country: d.country_name || "", lastUpdate: d.last_update || "",
+    lat: typeof d.latitude === "number" ? d.latitude : null, lon: typeof d.longitude === "number" ? d.longitude : null,
     hostnames: d.hostnames || [], domains: d.domains || [], tags: d.tags || [],
     ports: (d.ports || []).sort((a, b) => a - b),
     vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
@@ -323,9 +420,14 @@ async function shodanHost(ip, key) {
   };
 }
 
-async function shodanLookup(target) {
+async function shodanLookup(target, fresh) {
   const host = (target || "").trim();
   if (!host) return { error: "No target host/IP." };
+  const ck = "sc:" + host.toLowerCase();
+  if (!fresh) {
+    const c = (await chrome.storage.session.get(ck))[ck];
+    if (c && Date.now() - c.ts < 600000) return { ...c.data, cached: true }; // 10-min cache
+  }
   const { shodanKey } = await getKeys();
   const ip = await resolveIp(host, shodanKey);
   if (!ip) return { error: "Could not resolve to an IP." };
@@ -342,37 +444,84 @@ async function shodanLookup(target) {
   }
   out.query = host;
 
-  // Enrich in parallel: IP RDAP (always), plus domain DNS + domain RDAP for hosts.
-  out.rdapIp = null;
-  const jobs = [rdapIp(ip).then((r) => { out.rdapIp = r; })];
+  // Enrich in parallel: IP RDAP + geolocation (always), plus domain DNS + RDAP.
+  out.rdapIp = null; out.geo = null;
+  const jobs = [
+    rdapIp(ip).then((r) => { out.rdapIp = r; }),
+    ipGeo(ip).then((g) => { out.geo = g; }),
+  ];
   if (!isIp(host)) {
     jobs.push(domainLookup(host, shodanKey).then((r) => { out.dns = r; }));
     jobs.push(rdapDomain(host).then((r) => { out.rdap = r; }));
   }
   await Promise.all(jobs);
 
-  // Backfill org/country from RDAP when the keyless source didn't provide them.
+  // Backfill from geolocation / RDAP when the keyless host source lacked fields.
+  const g = out.geo;
+  if (g) {
+    if (!out.city && g.city) out.city = g.city;
+    if (!out.country && g.country) out.country = g.country;
+    if (!out.org && g.org) out.org = g.org;
+    if (!out.isp && g.isp) out.isp = g.isp;
+    if (!out.asn && g.asn) out.asn = g.asn;
+    if (out.lat == null && typeof g.lat === "number") { out.lat = g.lat; out.lon = g.lon; }
+  }
   if (!out.org && out.rdapIp?.org) out.org = out.rdapIp.org;
   if (!out.country && out.rdapIp?.country) out.country = out.rdapIp.country;
+
+  // Related hosts / servers connected to the domain.
+  if (!isIp(host)) out.related = await relatedHosts(host, out.dns, shodanKey);
+
+  try { await chrome.storage.session.set({ [ck]: { data: out, ts: Date.now() } }); } catch {}
   return out;
 }
 
-async function vtLookup(domain) {
+async function vtLookup(target, fresh) {
+  const q = (target || "").trim();
+  if (!q) return { error: "No target." };
   const { vtKey } = await getKeys();
   if (!vtKey) return { error: "No VirusTotal API key set (Settings tab)." };
+
+  const ck = "vt:" + q.toLowerCase();
+  if (!fresh) {
+    const c = (await chrome.storage.session.get(ck))[ck];
+    if (c && Date.now() - c.ts < 600000) return { ...c.data, cached: true };
+  }
+
+  // Auto-detect the target type: file hash (MD5/SHA-1/SHA-256), IP, or domain.
+  let kind, path;
+  if (/^[a-f0-9]{64}$|^[a-f0-9]{40}$|^[a-f0-9]{32}$/i.test(q)) { kind = "file"; path = "files/" + q; }
+  else if (isIp(q)) { kind = "ip"; path = "ip_addresses/" + q; }
+  else { kind = "domain"; path = "domains/" + encodeURIComponent(q); }
+
   try {
-    const r = await fetch(`https://www.virustotal.com/api/v3/domains/${encodeURIComponent(domain)}`, { headers: { "x-apikey": vtKey } });
+    const r = await fetch(`https://www.virustotal.com/api/v3/${path}`, { headers: { "x-apikey": vtKey } });
     if (r.status === 401) return { error: "Invalid VirusTotal API key." };
+    if (r.status === 404) return { error: `Not found on VirusTotal (${kind}).` };
     if (r.status === 429) return { error: "VirusTotal rate limit reached (free tier = 4/min)." };
     if (!r.ok) throw new Error("HTTP " + r.status);
     const a = (await r.json()).data?.attributes || {};
-    return {
-      reputation: a.reputation ?? 0,
-      stats: a.last_analysis_stats || {},
-      categories: a.categories || {},
-      registrar: a.registrar || "",
-      created: a.creation_date ? new Date(a.creation_date * 1000).toISOString().slice(0, 10) : "",
-    };
+    const out = { kind, query: q, reputation: a.reputation ?? 0, stats: a.last_analysis_stats || {} };
+    if (kind === "domain") {
+      out.categories = a.categories || {};
+      out.registrar = a.registrar || "";
+      out.created = a.creation_date ? new Date(a.creation_date * 1000).toISOString().slice(0, 10) : "";
+    } else if (kind === "ip") {
+      out.asOwner = a.as_owner || "";
+      out.country = a.country || "";
+      out.asn = a.asn ? "AS" + a.asn : "";
+    } else {
+      out.name = a.meaningful_name || (a.names && a.names[0]) || "";
+      out.names = (a.names || []).slice(0, 8);
+      out.typeDesc = a.type_description || "";
+      out.size = a.size || 0;
+      out.sha256 = a.sha256 || "";
+      out.md5 = a.md5 || "";
+      out.threatLabel = a.popular_threat_classification?.suggested_threat_label || "";
+      out.firstSeen = a.first_submission_date ? new Date(a.first_submission_date * 1000).toISOString().slice(0, 10) : "";
+    }
+    try { await chrome.storage.session.set({ [ck]: { data: out, ts: Date.now() } }); } catch {}
+    return out;
   } catch (e) { return { error: String(e.message || e) }; }
 }
 
@@ -429,9 +578,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       await chrome.storage.local.set(patch);
       sendResponse({ ok: true });
     } else if (msg?.type === "shodan") {
-      sendResponse(await shodanLookup(msg.host));
+      sendResponse(await shodanLookup(msg.host, msg.fresh));
     } else if (msg?.type === "vt") {
-      sendResponse(await vtLookup(msg.domain));
+      sendResponse(await vtLookup(msg.target || msg.domain, msg.fresh));
     } else if (msg?.type === "meta") {
       const ds = await loadDataset();
       sendResponse({ meta: ds.meta });

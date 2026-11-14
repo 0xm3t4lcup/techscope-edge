@@ -28,7 +28,10 @@ The toolbar icon opens a compact popup (Technologies / Security / History). The
 which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
 
 - **Technologies** — detected stack grouped by category, with versions, confidence,
-  a filter box, and links to each technology's site.
+  a filter box, and links to each technology's site. Web-server name + version are
+  also detected via a second method (parsing `Server`, `X-Powered-By`,
+  `X-AspNet-Version`, `X-Generator` headers), filling in versions the fingerprint
+  dataset misses.
 - **Security** — grades the page's security response headers (HSTS, CSP,
   X-Content-Type-Options, framing protection, Referrer-Policy, Permissions-Policy)
   **A–F** from the headers already captured.
@@ -48,8 +51,10 @@ which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
 
   Works **without an API key** via keyless sources (Shodan **InternetDB**,
   DNS-over-HTTPS, crt.sh); a Shodan key upgrades the host/SSL/service detail.
-- **VirusTotal** (side panel) — domain reputation: malicious / suspicious /
-  harmless engine counts, reputation score, categories. Requires a VT API key.
+- **VirusTotal** (side panel) — reputation for a **domain, IP, or file hash**
+  (MD5/SHA-1/SHA-256, auto-detected): malicious / suspicious / harmless engine
+  counts, reputation, plus type-specific detail (file name/type/threat-label,
+  domain registrar/categories, IP AS owner). Requires a VT API key.
 - **History** — recently scanned sites and their stacks; clearable.
 - **Settings** (side panel) — enter your Shodan / VirusTotal API keys.
 - **Copy** (stack as Markdown) and **Export** (JSON); toolbar badge shows the

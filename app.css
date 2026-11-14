@@ -77,6 +77,9 @@ input:focus { outline: none; border-color: var(--accent); }
 .svc { background: var(--card); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; margin-bottom: 6px; }
 .svc-h { font-size: 12px; font-weight: 600; margin-bottom: 4px; word-break: break-all; }
 .svc .kv { background: none; border: none; padding: 2px 0; margin: 0; }
+.row2 { display: flex; gap: 10px; padding: 0 12px 4px; }
+.map { margin: 6px 12px 2px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.map iframe { width: 100%; height: 170px; border: 0; display: block; }
 
 /* settings */
 .set-row { padding: 10px 12px 0; }

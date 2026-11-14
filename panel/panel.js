@@ -41,12 +41,15 @@ $("exportBtn").addEventListener("click", () => {
 });
 
 // ---- Shodan ----------------------------------------------------------------
-$("shodanBtn").addEventListener("click", async () => {
+let lastShodan = null;
+
+async function runShodan(fresh) {
   const host = $("shodanTarget").value.trim() || hostOf(current.url);
   if (!host) return;
   $("shodan").innerHTML = `<div class="empty">Querying ${esc(host)}…</div>`;
-  const d = await send({ type: "shodan", host });
-  if (!d || d.error) { $("shodan").innerHTML = `<div class="err">${esc(d?.error || "Lookup failed")}</div>`; return; }
+  const d = await send({ type: "shodan", host, fresh });
+  if (!d || d.error) { lastShodan = null; $("shodan").innerHTML = `<div class="err">${esc(d?.error || "Lookup failed")}</div>`; return; }
+  lastShodan = d;
 
   const kv = (k, v) => v ? `<div class="kv"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>` : "";
   const chips = (k, arr, cls = "") => arr && arr.length
@@ -68,6 +71,17 @@ $("shodanBtn").addEventListener("click", async () => {
   html += chips("Domains", d.domains);
   html += chips("Tags", d.tags);
   html += chips("CPEs", d.cpes);
+  if (d.cached) html += `<div class="note">Served from cache (within 10 min) — use ⟳ refresh to re-query.</div>`;
+
+  // Geolocation map (keyless OpenStreetMap embed)
+  if (typeof d.lat === "number" && typeof d.lon === "number") {
+    const lat = d.lat, lon = d.lon;
+    const bbox = [lon - 0.4, lat - 0.3, lon + 0.4, lat + 0.3].join("%2C");
+    html += `<div class="cat-head">Location</div>
+      <div class="map"><iframe loading="lazy" referrerpolicy="no-referrer"
+        src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}"></iframe></div>
+      <div class="note"><a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=10/${lat}/${lon}" target="_blank" rel="noopener">Open larger map</a> · ${lat.toFixed(3)}, ${lon.toFixed(3)}</div>`;
+  }
 
   // Registration (WHOIS / RDAP, keyless)
   if (d.rdap) {
@@ -140,30 +154,91 @@ $("shodanBtn").addEventListener("click", async () => {
     }
   }
 
+  // Related hosts / servers connected to the domain
+  if (d.related && d.related.length) {
+    html += `<div class="cat-head">Related hosts / servers (${d.related.length})</div>`;
+    for (const h of d.related) {
+      const extra = [h.org, h.product, h.port ? ":" + h.port : ""].filter(Boolean).join(" · ");
+      html += `<div class="svc"><div class="svc-h">${esc(h.ip)} <span class="chip">${esc(h.source)}</span></div>`;
+      if (h.hostnames?.length) html += `<div class="kv"><span class="v">${esc(h.hostnames.join(", "))}</span></div>`;
+      if (extra) html += `<div class="kv"><span class="v">${esc(extra)}</span></div>`;
+      html += `</div>`;
+    }
+  }
+
   if (d.note) html += `<div class="note">${esc(d.note)}</div>`;
   $("shodan").innerHTML = html || `<div class="empty">No data.</div>`;
+}
+
+$("shodanBtn").addEventListener("click", () => runShodan(false));
+$("shodanRefreshBtn").addEventListener("click", () => runShodan(true));
+$("shodanExportBtn").addEventListener("click", () => {
+  if (!lastShodan) return;
+  const name = String(lastShodan.query || lastShodan.ip || "report").replace(/[^a-z0-9.\-]/gi, "_");
+  const url = URL.createObjectURL(new Blob([JSON.stringify(lastShodan, null, 2)], { type: "application/json" }));
+  const a = document.createElement("a"); a.href = url; a.download = `shodan-${name}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+$("shodanCopyBtn").addEventListener("click", async () => {
+  if (!lastShodan) return;
+  try { await navigator.clipboard.writeText(shodanReport(lastShodan)); flash($("shodanCopyBtn")); } catch {}
 });
 
+function shodanReport(d) {
+  const L = [`# Shodan report — ${d.query || d.ip}`, `IP: ${d.ip}  (source: ${d.source})`];
+  if (d.org) L.push(`Org: ${d.org}`);
+  if (d.isp) L.push(`ISP: ${d.isp}`);
+  if (d.asn) L.push(`ASN: ${d.asn}`);
+  if (d.city || d.country) L.push(`Location: ${[d.city, d.country].filter(Boolean).join(", ")}`);
+  if (typeof d.lat === "number") L.push(`Coords: ${d.lat}, ${d.lon}`);
+  if (d.rdap) L.push(`Registrar: ${d.rdap.registrar} (created ${(d.rdap.created || "").slice(0, 10)}, expires ${(d.rdap.expires || "").slice(0, 10)})`);
+  if (d.ports?.length) L.push(`Open ports: ${d.ports.join(", ")}`);
+  if (d.vulns?.length) L.push(`CVEs: ${d.vulns.join(", ")}`);
+  if (d.dns?.records?.length) { L.push(`\nDNS:`); for (const r of d.dns.records) L.push(`  ${r.type} ${r.value}`); }
+  if (d.related?.length) { L.push(`\nRelated hosts:`); for (const h of d.related) L.push(`  ${h.ip}  ${h.hostnames.join(", ")}${h.org ? "  [" + h.org + "]" : ""}`); }
+  if (d.services?.length) { L.push(`\nServices:`); for (const s of d.services) L.push(`  :${s.port} ${[s.product, s.version].filter(Boolean).join(" ")}${s.ssl ? "  SSL:" + s.ssl.subject : ""}`); }
+  return L.join("\n");
+}
+
 // ---- VirusTotal ------------------------------------------------------------
-$("vtBtn").addEventListener("click", async () => {
-  const host = $("vtTarget").value.trim() || hostOf(current.url);
-  if (!host) return;
-  $("vt").innerHTML = `<div class="empty">Querying ${esc(host)}…</div>`;
-  const d = await send({ type: "vt", domain: host });
+async function runVt(fresh) {
+  const target = $("vtTarget").value.trim() || hostOf(current.url);
+  if (!target) return;
+  $("vt").innerHTML = `<div class="empty">Querying ${esc(target)}…</div>`;
+  const d = await send({ type: "vt", target, fresh });
   if (!d || d.error) { $("vt").innerHTML = `<div class="err">${esc(d?.error || "Lookup failed")}</div>`; return; }
   const s = d.stats || {};
-  const mal = s.malicious || 0, susp = s.suspicious || 0, harm = s.harmless || 0;
+  const mal = s.malicious || 0, susp = s.suspicious || 0, harm = s.harmless || 0, undet = s.undetected || 0;
   const cls = mal > 0 ? "g-F" : susp > 0 ? "g-C" : "g-A";
   const letter = mal > 0 ? "!" : susp > 0 ? "?" : "✓";
-  let html = `<div class="grade"><div class="letter ${cls}">${letter}</div>
-    <div class="meta">${mal} malicious · ${susp} suspicious · ${harm} harmless<br>reputation ${d.reputation}</div></div>`;
   const kv = (k, v) => v ? `<div class="kv"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>` : "";
-  html += kv("Registrar", d.registrar);
-  html += kv("Created", d.created);
-  const cats = Object.values(d.categories || {});
-  if (cats.length) html += `<div class="kv"><span class="k">Categories</span><span class="v">${[...new Set(cats)].map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</span></div>`;
+  let html = `<div class="grade"><div class="letter ${cls}">${letter}</div>
+    <div class="meta">${mal} malicious · ${susp} suspicious · ${harm} harmless · ${undet} undetected<br>${esc(d.kind)} · reputation ${d.reputation}</div></div>`;
+  if (d.cached) html += `<div class="note">Served from cache (within 10 min) — ⟳ refresh to re-query.</div>`;
+  if (d.kind === "file") {
+    html += kv("Name", d.name);
+    html += kv("Type", d.typeDesc);
+    html += kv("Threat label", d.threatLabel);
+    html += kv("Size", d.size ? d.size.toLocaleString() + " bytes" : "");
+    html += kv("First seen", d.firstSeen);
+    html += kv("SHA-256", d.sha256);
+    html += kv("MD5", d.md5);
+    if (d.names?.length) html += kv("Other names", d.names.join(", "));
+  } else if (d.kind === "ip") {
+    html += kv("AS owner", d.asOwner);
+    html += kv("ASN", d.asn);
+    html += kv("Country", d.country);
+  } else {
+    html += kv("Registrar", d.registrar);
+    html += kv("Created", d.created);
+    const cats = [...new Set(Object.values(d.categories || {}))];
+    if (cats.length) html += `<div class="kv"><span class="k">Categories</span><span class="v">${cats.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</span></div>`;
+  }
+  html += `<div class="note"><a href="https://www.virustotal.com/gui/search/${encodeURIComponent(d.query)}" target="_blank" rel="noopener">Open on VirusTotal</a></div>`;
   $("vt").innerHTML = html;
-});
+}
+$("vtBtn").addEventListener("click", () => runVt(false));
+$("vtRefreshBtn").addEventListener("click", () => runVt(true));
 
 // ---- history ---------------------------------------------------------------
 async function loadHistory() {
