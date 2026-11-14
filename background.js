@@ -187,6 +187,104 @@ async function internetDb(ip, prefix) {
   } catch (e) { return { error: String(e.message || e) }; }
 }
 
+function extractSans(cert) {
+  try {
+    const ext = (cert.extensions || []).find((e) => e.name === "subjectAltName");
+    if (ext && ext.data) return ext.data.replace(/DNS:/g, "").split(/,\s*/).filter(Boolean).slice(0, 25);
+  } catch {}
+  return [];
+}
+
+function parseServices(data) {
+  return (data || []).slice(0, 40).map((s) => {
+    const svc = {
+      port: s.port, transport: s.transport || "",
+      product: s.product || "", version: s.version || "",
+      module: (s._shodan && s._shodan.module) || "",
+    };
+    if (s.http) svc.http = { server: s.http.server || "", title: s.http.title || "", status: s.http.status || "" };
+    if (s.ssl && s.ssl.cert) {
+      const c = s.ssl.cert;
+      svc.ssl = {
+        subject: (c.subject && c.subject.CN) || "",
+        issuer: (c.issuer && (c.issuer.CN || c.issuer.O)) || "",
+        issued: c.issued || "", expires: c.expires || "",
+        sigAlg: c.sig_alg || "", sha256: (c.fingerprint && c.fingerprint.sha256) || "",
+        versions: s.ssl.versions || [],
+        cipher: s.ssl.cipher ? `${s.ssl.cipher.name || ""} (${s.ssl.cipher.bits || "?"} bit)` : "",
+        jarm: s.ssl.jarm || "",
+        sans: extractSans(c),
+      };
+    }
+    return svc;
+  });
+}
+
+async function doh(name, type) {
+  try {
+    const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`);
+    if (!r.ok) return [];
+    return ((await r.json()).Answer || []).map((a) => ({ type, name: a.name, value: a.data }));
+  } catch { return []; }
+}
+
+// Domain intelligence: subdomains + DNS records (Shodan DNS if keyed, else DoH)
+// plus Certificate-Transparency certs from crt.sh (keyless).
+async function domainLookup(domain, key) {
+  const out = { subdomains: [], records: [], certs: [] };
+  let gotShodanDns = false;
+  if (key) {
+    try {
+      const r = await fetch(`https://api.shodan.io/dns/domain/${encodeURIComponent(domain)}?key=${encodeURIComponent(key)}`);
+      if (r.ok) {
+        const d = await r.json();
+        out.subdomains = (d.subdomains || []).slice(0, 100);
+        out.records = (d.data || []).slice(0, 100).map((x) => ({
+          type: x.type, name: (x.subdomain ? x.subdomain + "." : "") + domain, value: x.value,
+        }));
+        gotShodanDns = true;
+      }
+    } catch {}
+  }
+  if (!gotShodanDns) {
+    for (const t of ["A", "AAAA", "MX", "NS", "TXT", "CNAME"]) out.records.push(...(await doh(domain, t)));
+    out.records = out.records.slice(0, 100);
+  }
+  try { // crt.sh certificate transparency (keyless)
+    const r = await fetch(`https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`);
+    if (r.ok) {
+      const arr = await r.json();
+      const seen = new Set();
+      for (const c of arr) {
+        const k = (c.issuer_name || "") + "|" + (c.not_after || "");
+        if (seen.has(k)) continue; seen.add(k);
+        out.certs.push({
+          issuer: c.issuer_name || "", names: String(c.name_value || "").split("\n").slice(0, 6),
+          notBefore: c.not_before || "", notAfter: c.not_after || "",
+        });
+        if (out.certs.length >= 8) break;
+      }
+    }
+  } catch {}
+  return out;
+}
+
+async function shodanHost(ip, key) {
+  const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(key)}`);
+  if (r.status === 401) return { error: "Invalid Shodan API key." };
+  if (r.status === 404) return { notFound: true };
+  if (!r.ok) throw new Error("host HTTP " + r.status);
+  const d = await r.json();
+  return {
+    source: "shodan", ip, org: d.org || "", isp: d.isp || "", asn: d.asn || "", os: d.os || "",
+    city: d.city || "", country: d.country_name || "", lastUpdate: d.last_update || "",
+    hostnames: d.hostnames || [], domains: d.domains || [], tags: d.tags || [],
+    ports: (d.ports || []).sort((a, b) => a - b),
+    vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
+    services: parseServices(d.data),
+  };
+}
+
 async function shodanLookup(target) {
   const host = (target || "").trim();
   if (!host) return { error: "No target host/IP." };
@@ -194,26 +292,20 @@ async function shodanLookup(target) {
   const ip = await resolveIp(host, shodanKey);
   if (!ip) return { error: "Could not resolve to an IP." };
 
+  let out;
   if (shodanKey) {
     try {
-      const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(shodanKey)}`);
-      if (r.status === 401) return { error: "Invalid Shodan API key." };
-      if (r.status === 404) return internetDb(ip, "No full Shodan record — "); // graceful fallback
-      if (r.ok) {
-        const d = await r.json();
-        return {
-          source: "shodan", ip, org: d.org || d.isp || "", country: d.country_name || "", os: d.os || "",
-          ports: (d.ports || []).sort((a, b) => a - b),
-          vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
-          services: (d.data || []).slice(0, 30).map((s) => ({
-            port: s.port, transport: s.transport || "",
-            product: s.product || (s._shodan && s._shodan.module) || "",
-          })),
-        };
-      }
-    } catch { /* fall through to keyless */ }
+      const rec = await shodanHost(ip, shodanKey);
+      if (rec.error) return rec;
+      out = rec.notFound ? await internetDb(ip, "No full Shodan record — ") : rec;
+    } catch { out = await internetDb(ip); }
+  } else {
+    out = await internetDb(ip);
   }
-  return internetDb(ip); // no key, or the authed call failed
+  out.query = host;
+  // Domain-level intelligence (DNS + certificates) when the target is a hostname.
+  if (!isIp(host)) out.dns = await domainLookup(host, shodanKey);
+  return out;
 }
 
 async function vtLookup(domain) {
