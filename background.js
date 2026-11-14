@@ -404,10 +404,12 @@ async function relatedHosts(domain, dns, key) {
 }
 
 async function shodanHost(ip, key) {
-  const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(key)}`);
+  let r;
+  try { r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(key)}`); }
+  catch (e) { return { httpError: 0, message: String(e.message || e) }; }
   if (r.status === 401) return { error: "Invalid Shodan API key." };
   if (r.status === 404) return { notFound: true };
-  if (!r.ok) throw new Error("host HTTP " + r.status);
+  if (!r.ok) return { httpError: r.status }; // 403 = needs paid Shodan membership
   const d = await r.json();
   return {
     source: "shodan", ip, org: d.org || "", isp: d.isp || "", asn: d.asn || "", os: d.os || "",
@@ -423,22 +425,28 @@ async function shodanHost(ip, key) {
 async function shodanLookup(target, fresh) {
   const host = (target || "").trim();
   if (!host) return { error: "No target host/IP." };
-  const ck = "sc:" + host.toLowerCase();
+  const { shodanKey } = await getKeys();
+  // Cache key includes key-state so adding/removing a key invalidates stale results.
+  const ck = "sc:" + (shodanKey ? "k" : "n") + ":" + host.toLowerCase();
   if (!fresh) {
     const c = (await chrome.storage.session.get(ck))[ck];
     if (c && Date.now() - c.ts < 600000) return { ...c.data, cached: true }; // 10-min cache
   }
-  const { shodanKey } = await getKeys();
   const ip = await resolveIp(host, shodanKey);
   if (!ip) return { error: "Could not resolve to an IP." };
 
   let out;
   if (shodanKey) {
-    try {
-      const rec = await shodanHost(ip, shodanKey);
-      if (rec.error) return rec;
-      out = rec.notFound ? await internetDb(ip, "No full Shodan record — ") : rec;
-    } catch { out = await internetDb(ip); }
+    const rec = await shodanHost(ip, shodanKey);
+    if (rec.error) return rec; // invalid key → surface it
+    if (rec.source === "shodan") {
+      out = rec;
+    } else {
+      out = await internetDb(ip);
+      out.note = rec.notFound
+        ? "Shodan has no full host record for this IP — showing keyless InternetDB data."
+        : `Your Shodan key worked, but the /shodan/host endpoint returned HTTP ${rec.httpError} — that endpoint needs a paid Shodan membership (a free API key can't use it). Showing keyless InternetDB data.`;
+    }
   } else {
     out = await internetDb(ip);
   }
@@ -482,7 +490,7 @@ async function vtLookup(target, fresh) {
   const { vtKey } = await getKeys();
   if (!vtKey) return { error: "No VirusTotal API key set (Settings tab)." };
 
-  const ck = "vt:" + q.toLowerCase();
+  const ck = "vt:" + (vtKey ? "k" : "n") + ":" + q.toLowerCase();
   if (!fresh) {
     const c = (await chrome.storage.session.get(ck))[ck];
     if (c && Date.now() - c.ts < 600000) return { ...c.data, cached: true };
