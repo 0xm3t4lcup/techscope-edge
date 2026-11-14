@@ -571,6 +571,21 @@ chrome.alarms.create("datasetUpdate", { delayInMinutes: 1, periodInMinutes: 360 
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "datasetUpdate") checkForDatasetUpdate(); });
 chrome.runtime.onStartup.addListener(() => checkForDatasetUpdate());
 
+// ---- context menu: send a selected value to the side panel -----------------
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({ id: "ts-vt", title: 'TechScope: Scan "%s" on VirusTotal', contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "ts-shodan", title: 'TechScope: Look up "%s" on Shodan', contexts: ["selection"] });
+  });
+});
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const q = (info.selectionText || "").trim();
+  if (!q) return;
+  const type = info.menuItemId === "ts-shodan" ? "shodan" : "vt";
+  await chrome.storage.session.set({ pending: { type, query: q, ts: Date.now() } });
+  try { await chrome.sidePanel.open({ windowId: tab.windowId }); } catch {}
+});
+
 // ---- events ----------------------------------------------------------------
 
 chrome.webNavigation.onCompleted.addListener((d) => {

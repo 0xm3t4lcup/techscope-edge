@@ -7,16 +7,26 @@ let current = { url: "", results: [], security: null };
 const send = (m) => chrome.runtime.sendMessage(m).catch(() => null);
 
 // tabs
-document.querySelectorAll(".tab").forEach((t) => {
-  t.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
-    document.querySelectorAll(".panel-view").forEach((x) => x.classList.remove("active"));
-    t.classList.add("active");
-    $("panel-" + t.dataset.tab).classList.add("active");
-    if (t.dataset.tab === "history") loadHistory();
-    if (t.dataset.tab === "settings") loadKeyStatus();
-  });
-});
+function activateTab(name) {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".panel-view").forEach((x) => x.classList.remove("active"));
+  const p = $("panel-" + name);
+  if (p) p.classList.add("active");
+  if (name === "history") loadHistory();
+  if (name === "settings") loadKeyStatus();
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => activateTab(t.dataset.tab)));
+
+// Right-click → "Send to TechScope" leaves a pending query for us to run.
+async function checkPending() {
+  let pending;
+  try { pending = (await chrome.storage.session.get("pending")).pending; } catch { return; }
+  if (!pending || Date.now() - pending.ts > 30000) return;
+  try { await chrome.storage.session.remove("pending"); } catch {}
+  if (pending.type === "shodan") { activateTab("shodan"); $("shodanTarget").value = pending.query; runShodan(false); }
+  else { activateTab("vt"); $("vtTarget").value = pending.query; runVt(false); }
+}
+chrome.storage.onChanged.addListener((ch, area) => { if (area === "session" && ch.pending?.newValue) checkPending(); });
 
 async function load(force = false) {
   $("results").innerHTML = `<div class="empty">Scanning…</div>`;
@@ -315,3 +325,4 @@ function flash(btn) { const t = btn.textContent; btn.textContent = "✓"; setTim
 
 send({ type: "meta" }).then((r) => { if (r?.meta) $("dbinfo").textContent = `${r.meta.techCount} techs`; });
 load();
+checkPending();

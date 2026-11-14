@@ -64,6 +64,12 @@ which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
 - **Copy** (stack as Markdown) and **Export** (JSON); toolbar badge shows the
   number of technologies detected.
 
+### Right-click → send to TechScope
+Select any text on a page (a hash, domain, or IP), right-click, and choose
+**"TechScope: Scan … on VirusTotal"** or **"… Look up … on Shodan"**. The side
+panel opens and runs the lookup automatically (for a file hash, the VirusTotal
+result includes the sample-download buttons).
+
 ### API keys (Shodan / VirusTotal)
 Open the side panel → **⚙ Settings** → paste your keys → **Save**. Keys are stored
 locally in `chrome.storage.local` and are sent **only** to `api.shodan.io` /
