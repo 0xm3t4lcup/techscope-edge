@@ -36,6 +36,9 @@ which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
   override box** (look up any target):
   - **Overview** — IP, organization, ISP, ASN, OS, geolocation, last-seen,
     hostnames, domains, tags.
+  - **Registration (RDAP/WHOIS, keyless)** — domain registrar, created/expires/
+    updated dates, status, nameservers; and the IP's network owner, range and
+    country.
   - **DNS** — records (A/AAAA/MX/NS/TXT/CNAME) and subdomains.
   - **Ports & CVEs** — open ports and known vulnerabilities.
   - **TLS/SSL** — per-service certificates (subject, issuer, validity, SANs, TLS

@@ -269,6 +269,44 @@ async function domainLookup(domain, key) {
   return out;
 }
 
+// Keyless WHOIS-equivalent via RDAP (rdap.org bootstraps to the right registry).
+function vcardFn(entity) {
+  try {
+    const v = entity.vcardArray && entity.vcardArray[1];
+    if (v) { const fn = v.find((x) => x[0] === "fn"); if (fn) return fn[3]; }
+  } catch {}
+  return "";
+}
+async function rdapDomain(domain) {
+  try {
+    const r = await fetch(`https://rdap.org/domain/${encodeURIComponent(domain)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const ev = {}; for (const e of d.events || []) ev[e.eventAction] = e.eventDate;
+    let registrar = "";
+    for (const en of d.entities || []) {
+      if ((en.roles || []).includes("registrar")) registrar = vcardFn(en) || (en.publicIds?.[0]?.identifier) || "";
+    }
+    return {
+      registrar, created: ev.registration || "", expires: ev.expiration || "", updated: ev["last changed"] || "",
+      status: (d.status || []).slice(0, 10),
+      nameservers: (d.nameservers || []).map((n) => n.ldhName).filter(Boolean).slice(0, 12),
+    };
+  } catch { return null; }
+}
+async function rdapIp(ip) {
+  try {
+    const r = await fetch(`https://rdap.org/ip/${encodeURIComponent(ip)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    let org = "";
+    for (const en of d.entities || []) { const fn = vcardFn(en); if (fn) { org = fn; break; } }
+    const c0 = d.cidr0_cidrs?.[0];
+    const cidr = c0 ? `${c0.v4prefix || c0.v6prefix}/${c0.length}` : (d.startAddress && d.endAddress ? `${d.startAddress} – ${d.endAddress}` : "");
+    return { name: d.name || "", handle: d.handle || "", country: d.country || "", cidr, org };
+  } catch { return null; }
+}
+
 async function shodanHost(ip, key) {
   const r = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(key)}`);
   if (r.status === 401) return { error: "Invalid Shodan API key." };
@@ -303,8 +341,19 @@ async function shodanLookup(target) {
     out = await internetDb(ip);
   }
   out.query = host;
-  // Domain-level intelligence (DNS + certificates) when the target is a hostname.
-  if (!isIp(host)) out.dns = await domainLookup(host, shodanKey);
+
+  // Enrich in parallel: IP RDAP (always), plus domain DNS + domain RDAP for hosts.
+  out.rdapIp = null;
+  const jobs = [rdapIp(ip).then((r) => { out.rdapIp = r; })];
+  if (!isIp(host)) {
+    jobs.push(domainLookup(host, shodanKey).then((r) => { out.dns = r; }));
+    jobs.push(rdapDomain(host).then((r) => { out.rdap = r; }));
+  }
+  await Promise.all(jobs);
+
+  // Backfill org/country from RDAP when the keyless source didn't provide them.
+  if (!out.org && out.rdapIp?.org) out.org = out.rdapIp.org;
+  if (!out.country && out.rdapIp?.country) out.country = out.rdapIp.country;
   return out;
 }
 

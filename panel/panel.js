@@ -69,6 +69,24 @@ $("shodanBtn").addEventListener("click", async () => {
   html += chips("Tags", d.tags);
   html += chips("CPEs", d.cpes);
 
+  // Registration (WHOIS / RDAP, keyless)
+  if (d.rdap) {
+    html += `<div class="cat-head">Domain registration (RDAP)</div>`;
+    html += kv("Registrar", d.rdap.registrar);
+    html += kv("Created", (d.rdap.created || "").slice(0, 10));
+    html += kv("Expires", (d.rdap.expires || "").slice(0, 10));
+    html += kv("Updated", (d.rdap.updated || "").slice(0, 10));
+    html += chips("Status", d.rdap.status);
+    html += chips("Nameservers", d.rdap.nameservers);
+  }
+  if (d.rdapIp && (d.rdapIp.name || d.rdapIp.org || d.rdapIp.cidr)) {
+    html += `<div class="cat-head">IP network (RDAP)</div>`;
+    html += kv("Network", d.rdapIp.name);
+    html += kv("Owner", d.rdapIp.org);
+    html += kv("Range", d.rdapIp.cidr);
+    html += kv("Country", d.rdapIp.country);
+  }
+
   // DNS / domain
   if (d.dns) {
     html += `<div class="cat-head">DNS records</div>`;
