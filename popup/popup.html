@@ -3,26 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="../app.css" />
   <title>TechScope</title>
 </head>
-<body>
+<body class="popup">
   <header>
-    <div class="brand">
-      <img src="../icons/icon32.png" width="20" height="20" alt="" />
-      <span>TechScope</span>
-    </div>
+    <div class="brand"><img src="../icons/icon32.png" width="20" height="20" alt="" /><span>TechScope</span></div>
     <div class="actions">
+      <button id="panelBtn" title="Open in side panel (right)">⇥</button>
       <button id="rescanBtn" title="Re-scan this page">⟳</button>
       <button id="copyBtn" title="Copy stack">⧉</button>
       <button id="exportBtn" title="Export as JSON">⤓</button>
     </div>
   </header>
 
-  <div class="site">
-    <span id="host">—</span>
-    <span id="count" class="pill">0</span>
-  </div>
+  <div class="site"><span id="host" class="h">—</span><span id="count" class="pill">0</span></div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="tech">Technologies</button>
@@ -30,31 +25,26 @@
     <button class="tab" data-tab="history">History</button>
   </nav>
 
-  <!-- Technologies -->
-  <section id="panel-tech" class="panel active">
+  <section id="panel-tech" class="panel-view active">
     <input id="search" type="search" placeholder="Filter technologies…" autocomplete="off" />
     <div id="results" class="results"><div class="empty">Scanning…</div></div>
   </section>
 
-  <!-- Security -->
-  <section id="panel-security" class="panel">
+  <section id="panel-security" class="panel-view">
     <div id="security" class="results"><div class="empty">—</div></div>
   </section>
 
-  <!-- History -->
-  <section id="panel-history" class="panel">
-    <div class="history-head">
-      <span class="muted">Recently scanned sites</span>
-      <button id="clearHistBtn" class="link">clear</button>
+  <section id="panel-history" class="panel-view">
+    <div class="results">
+      <div class="history-head"><span class="muted">Recently scanned</span><button id="clearHistBtn" class="link">clear</button></div>
+      <div id="history"></div>
     </div>
-    <div id="history" class="results"><div class="empty">No history yet.</div></div>
   </section>
 
   <footer>
-    <span id="dbinfo">—</span>
-    <span class="muted">client-side detection</span>
+    <span class="muted">Tip: ⇥ opens the full panel with Shodan &amp; VirusTotal</span>
   </footer>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

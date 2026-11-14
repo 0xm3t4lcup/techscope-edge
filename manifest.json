@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "TechScope",
-  "version": "1.1.0",
-  "description": "Profiles the technologies a website is built with — CMS, frameworks, analytics, servers, CDNs, and more.",
-  "minimum_chrome_version": "111",
+  "version": "1.2.0",
+  "description": "Profiles the technologies a website is built with — CMS, frameworks, analytics, servers, CDNs, and more. Side panel with Shodan + VirusTotal lookups.",
+  "minimum_chrome_version": "116",
   "permissions": [
     "scripting",
     "storage",
@@ -11,12 +11,16 @@
     "tabs",
     "webNavigation",
     "alarms",
-    "clipboardWrite"
+    "clipboardWrite",
+    "sidePanel"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
   },
   "action": {
     "default_popup": "popup/popup.html",

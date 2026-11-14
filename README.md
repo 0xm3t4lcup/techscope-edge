@@ -22,15 +22,32 @@ across **109 categories**, with **version extraction**, **confidence scores**, a
 | JS globals | injected **MAIN-world** probe | `window.React` ⇒ React |
 | DOM | injected DOM collector | selector presence |
 
-### Popup features
-- **Technologies** tab — detected stack grouped by category, with versions,
-  confidence, filter box, and links to each technology's site.
-- **Security** tab — grades the page's security response headers (HSTS, CSP,
+### Popup & side panel
+The toolbar icon opens a compact popup (Technologies / Security / History). The
+**⇥ button** pops the full UI out into Edge's **side panel** (docked on the right),
+which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
+
+- **Technologies** — detected stack grouped by category, with versions, confidence,
+  a filter box, and links to each technology's site.
+- **Security** — grades the page's security response headers (HSTS, CSP,
   X-Content-Type-Options, framing protection, Referrer-Policy, Permissions-Policy)
-  A–F from the headers already captured.
-- **History** tab — recently scanned sites and their detected stacks; clearable.
-- **Copy** (stack as Markdown) and **Export** (JSON) actions; toolbar badge shows
-  the number of technologies detected.
+  **A–F** from the headers already captured.
+- **Shodan** (side panel) — resolves the host to an IP and shows open ports,
+  services, org, country, and known CVEs. Requires a Shodan API key.
+- **VirusTotal** (side panel) — domain reputation: malicious / suspicious /
+  harmless engine counts, reputation score, categories. Requires a VT API key.
+- **History** — recently scanned sites and their stacks; clearable.
+- **Settings** (side panel) — enter your Shodan / VirusTotal API keys.
+- **Copy** (stack as Markdown) and **Export** (JSON); toolbar badge shows the
+  number of technologies detected.
+
+### API keys (Shodan / VirusTotal)
+Open the side panel → **⚙ Settings** → paste your keys → **Save**. Keys are stored
+locally in `chrome.storage.local` and are sent **only** to `api.shodan.io` /
+`virustotal.com` directly — never anywhere else. Leave a field blank and save to
+clear it. Free tiers: Shodan needs a (free) account key; VirusTotal free tier is
+rate-limited to ~4 requests/min, so lookups are **on-demand** (a button), not
+automatic.
 
 ### About "Pro" features
 Wappalyzer's paid tier is mostly its **backend** (company/contact enrichment, lead

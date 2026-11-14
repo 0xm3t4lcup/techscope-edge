@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../app.css" />
+  <title>TechScope</title>
+</head>
+<body class="panel">
+  <header>
+    <div class="brand"><img src="../icons/icon32.png" width="20" height="20" alt="" /><span>TechScope</span></div>
+    <div class="actions">
+      <button id="rescanBtn" title="Re-scan">⟳</button>
+      <button id="copyBtn" title="Copy stack">⧉</button>
+      <button id="exportBtn" title="Export JSON">⤓</button>
+    </div>
+  </header>
+
+  <div class="site"><span id="host" class="h">—</span><span id="count" class="pill">0</span></div>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="tech">Technologies</button>
+    <button class="tab" data-tab="security">Security</button>
+    <button class="tab" data-tab="shodan">Shodan</button>
+    <button class="tab" data-tab="vt">VirusTotal</button>
+    <button class="tab" data-tab="history">History</button>
+    <button class="tab" data-tab="settings">⚙</button>
+  </nav>
+
+  <section id="panel-tech" class="panel-view active">
+    <input id="search" type="search" placeholder="Filter technologies…" autocomplete="off" />
+    <div id="results" class="results"><div class="empty">Scanning…</div></div>
+  </section>
+
+  <section id="panel-security" class="panel-view">
+    <div id="security" class="results"><div class="empty">—</div></div>
+  </section>
+
+  <section id="panel-shodan" class="panel-view">
+    <button id="shodanBtn" class="scan-btn">Look up host on Shodan</button>
+    <div id="shodan" class="results"></div>
+  </section>
+
+  <section id="panel-vt" class="panel-view">
+    <button id="vtBtn" class="scan-btn">Check domain on VirusTotal</button>
+    <div id="vt" class="results"></div>
+  </section>
+
+  <section id="panel-history" class="panel-view">
+    <div class="results">
+      <div class="history-head"><span class="muted">Recently scanned sites</span><button id="clearHistBtn" class="link">clear</button></div>
+      <div id="history"></div>
+    </div>
+  </section>
+
+  <section id="panel-settings" class="panel-view">
+    <div class="results">
+      <div class="set-row">
+        <label>Shodan API key</label>
+        <input id="shodanKey" class="field" type="password" placeholder="enter key" autocomplete="off" />
+        <div class="set-status" id="shodanStatus">not set</div>
+      </div>
+      <div class="set-row">
+        <label>VirusTotal API key</label>
+        <input id="vtKey" class="field" type="password" placeholder="enter key" autocomplete="off" />
+        <div class="set-status" id="vtStatus">not set</div>
+      </div>
+      <button id="saveKeysBtn" class="save-btn">Save keys</button>
+      <p class="note">Keys are stored locally in this extension (<code>chrome.storage.local</code>) and are only sent directly to Shodan / VirusTotal. Leave a field blank and save to clear it.</p>
+    </div>
+  </section>
+
+  <footer><span id="dbinfo">—</span><span class="muted">client-side detection</span></footer>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

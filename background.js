@@ -145,6 +145,57 @@ async function saveHistory(url, results) {
   await chrome.storage.local.set({ history });
 }
 
+// ---- Shodan / VirusTotal lookups -------------------------------------------
+// Keys are stored locally and only ever sent to Shodan / VirusTotal directly.
+async function getKeys() {
+  const { shodanKey = "", vtKey = "" } = await chrome.storage.local.get(["shodanKey", "vtKey"]);
+  return { shodanKey: shodanKey.trim(), vtKey: vtKey.trim() };
+}
+
+async function shodanLookup(host) {
+  const { shodanKey } = await getKeys();
+  if (!shodanKey) return { error: "No Shodan API key set (Settings tab)." };
+  try {
+    const r1 = await fetch(`https://api.shodan.io/dns/resolve?hostnames=${encodeURIComponent(host)}&key=${encodeURIComponent(shodanKey)}`);
+    if (r1.status === 401) return { error: "Invalid Shodan API key." };
+    if (!r1.ok) throw new Error("resolve HTTP " + r1.status);
+    const ip = (await r1.json())[host];
+    if (!ip) return { error: "Could not resolve host to an IP." };
+    const r2 = await fetch(`https://api.shodan.io/shodan/host/${ip}?key=${encodeURIComponent(shodanKey)}`);
+    if (r2.status === 404) return { ip, ports: [], services: [], vulns: [], note: "No Shodan data indexed for this IP." };
+    if (!r2.ok) throw new Error("host HTTP " + r2.status);
+    const d = await r2.json();
+    return {
+      ip, org: d.org || d.isp || "", country: d.country_name || "", os: d.os || "",
+      ports: (d.ports || []).sort((a, b) => a - b),
+      vulns: Array.isArray(d.vulns) ? d.vulns : Object.keys(d.vulns || {}),
+      services: (d.data || []).slice(0, 30).map((s) => ({
+        port: s.port, transport: s.transport || "",
+        product: s.product || (s._shodan && s._shodan.module) || "",
+      })),
+    };
+  } catch (e) { return { error: String(e.message || e) }; }
+}
+
+async function vtLookup(domain) {
+  const { vtKey } = await getKeys();
+  if (!vtKey) return { error: "No VirusTotal API key set (Settings tab)." };
+  try {
+    const r = await fetch(`https://www.virustotal.com/api/v3/domains/${encodeURIComponent(domain)}`, { headers: { "x-apikey": vtKey } });
+    if (r.status === 401) return { error: "Invalid VirusTotal API key." };
+    if (r.status === 429) return { error: "VirusTotal rate limit reached (free tier = 4/min)." };
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const a = (await r.json()).data?.attributes || {};
+    return {
+      reputation: a.reputation ?? 0,
+      stats: a.last_analysis_stats || {},
+      categories: a.categories || {},
+      registrar: a.registrar || "",
+      created: a.creation_date ? new Date(a.creation_date * 1000).toISOString().slice(0, 10) : "",
+    };
+  } catch (e) { return { error: String(e.message || e) }; }
+}
+
 // ---- auto-reload when the scheduled task refreshes the dataset -------------
 async function readBuildVersion() {
   try {
@@ -188,6 +239,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     } else if (msg?.type === "clearHistory") {
       await chrome.storage.local.set({ history: {} });
       sendResponse({ ok: true });
+    } else if (msg?.type === "getKeys") {
+      const { shodanKey, vtKey } = await getKeys();
+      sendResponse({ shodanSet: !!shodanKey, vtSet: !!vtKey }); // never echo the keys
+    } else if (msg?.type === "setKeys") {
+      const patch = {};
+      if (typeof msg.shodanKey === "string") patch.shodanKey = msg.shodanKey.trim();
+      if (typeof msg.vtKey === "string") patch.vtKey = msg.vtKey.trim();
+      await chrome.storage.local.set(patch);
+      sendResponse({ ok: true });
+    } else if (msg?.type === "shodan") {
+      sendResponse(await shodanLookup(msg.host));
+    } else if (msg?.type === "vt") {
+      sendResponse(await vtLookup(msg.domain));
     } else if (msg?.type === "meta") {
       const ds = await loadDataset();
       sendResponse({ meta: ds.meta });
