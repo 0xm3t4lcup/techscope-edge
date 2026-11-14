@@ -224,6 +224,8 @@ async function runVt(fresh) {
     html += kv("SHA-256", d.sha256);
     html += kv("MD5", d.md5);
     if (d.names?.length) html += kv("Other names", d.names.join(", "));
+    html += `<button id="vtDownloadBtn" class="scan-btn" data-hash="${esc(d.sha256 || d.query)}">⤓ Download sample</button>`;
+    html += `<div class="note">Requires a VirusTotal Premium/Enterprise key. The downloaded file is a live sample — handle it only in an isolated/sandboxed environment.</div>`;
   } else if (d.kind === "ip") {
     html += kv("AS owner", d.asOwner);
     html += kv("ASN", d.asn);
@@ -236,6 +238,15 @@ async function runVt(fresh) {
   }
   html += `<div class="note"><a href="https://www.virustotal.com/gui/search/${encodeURIComponent(d.query)}" target="_blank" rel="noopener">Open on VirusTotal</a></div>`;
   $("vt").innerHTML = html;
+
+  const dl = $("vtDownloadBtn");
+  if (dl) dl.addEventListener("click", async () => {
+    dl.disabled = true; const label = dl.textContent; dl.textContent = "Downloading…";
+    const r = await send({ type: "vtDownload", hash: dl.dataset.hash });
+    dl.disabled = false;
+    if (r?.ok) { dl.textContent = "✓ Download started"; }
+    else { dl.textContent = label; const e = document.createElement("div"); e.className = "err"; e.textContent = r?.error || "Download failed"; $("vt").appendChild(e); }
+  });
 }
 $("vtBtn").addEventListener("click", () => runVt(false));
 $("vtRefreshBtn").addEventListener("click", () => runVt(true));

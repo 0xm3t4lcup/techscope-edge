@@ -533,6 +533,22 @@ async function vtLookup(target, fresh) {
   } catch (e) { return { error: String(e.message || e) }; }
 }
 
+// Download a sample by hash (VirusTotal Premium/Enterprise keys only).
+async function vtDownload(hash) {
+  const { vtKey } = await getKeys();
+  if (!vtKey) return { error: "No VirusTotal API key set." };
+  try {
+    const r = await fetch(`https://www.virustotal.com/api/v3/files/${encodeURIComponent(hash)}/download_url`, { headers: { "x-apikey": vtKey } });
+    if (r.status === 403) return { error: "File download requires a VirusTotal Premium/Enterprise API key — the free API can't download samples." };
+    if (r.status === 404) return { error: "File not found on VirusTotal." };
+    if (!r.ok) return { error: "HTTP " + r.status };
+    const url = (await r.json()).data;
+    if (!url) return { error: "No download URL returned." };
+    const id = await chrome.downloads.download({ url, filename: `vt-sample-${hash}.bin`, saveAs: true });
+    return { ok: true, id };
+  } catch (e) { return { error: String(e.message || e) }; }
+}
+
 // ---- auto-reload when the scheduled task refreshes the dataset -------------
 async function readBuildVersion() {
   try {
@@ -589,6 +605,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse(await shodanLookup(msg.host, msg.fresh));
     } else if (msg?.type === "vt") {
       sendResponse(await vtLookup(msg.target || msg.domain, msg.fresh));
+    } else if (msg?.type === "vtDownload") {
+      sendResponse(await vtDownload(msg.hash));
     } else if (msg?.type === "meta") {
       const ds = await loadDataset();
       sendResponse({ meta: ds.meta });
