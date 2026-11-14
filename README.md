@@ -66,9 +66,10 @@ which adds **Shodan**, **VirusTotal**, and **Settings** tabs.
 
 ### Right-click → send to TechScope
 Select any text on a page (a hash, domain, or IP), right-click, and choose
-**"TechScope: Scan … on VirusTotal"** or **"… Look up … on Shodan"**. The side
-panel opens and runs the lookup automatically (for a file hash, the VirusTotal
-result includes the sample-download buttons).
+**"TechScope: Scan … on VirusTotal"** or **"… Look up … on Shodan"**. You can also
+right-click a **link** to send its host/domain to either tab. The side panel opens
+and runs the lookup automatically (for a file hash, the VirusTotal result includes
+the sample-download buttons).
 
 ### API keys (Shodan / VirusTotal)
 Open the side panel → **⚙ Settings** → paste your keys → **Save**. Keys are stored

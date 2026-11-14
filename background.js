@@ -574,14 +574,23 @@ chrome.runtime.onStartup.addListener(() => checkForDatasetUpdate());
 // ---- context menu: send a selected value to the side panel -----------------
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
+    // Selected text (hash / domain / IP)
     chrome.contextMenus.create({ id: "ts-vt", title: 'TechScope: Scan "%s" on VirusTotal', contexts: ["selection"] });
     chrome.contextMenus.create({ id: "ts-shodan", title: 'TechScope: Look up "%s" on Shodan', contexts: ["selection"] });
+    // Links (uses the link's host/domain)
+    chrome.contextMenus.create({ id: "ts-vt-link", title: "TechScope: Scan this link's domain on VirusTotal", contexts: ["link"] });
+    chrome.contextMenus.create({ id: "ts-shodan-link", title: "TechScope: Look up this link's host on Shodan", contexts: ["link"] });
   });
 });
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const q = (info.selectionText || "").trim();
+  let q = "";
+  if (String(info.menuItemId).endsWith("-link")) {
+    try { q = new URL(info.linkUrl).hostname.replace(/^www\./, ""); } catch {}
+  } else {
+    q = (info.selectionText || "").trim();
+  }
   if (!q) return;
-  const type = info.menuItemId === "ts-shodan" ? "shodan" : "vt";
+  const type = String(info.menuItemId).startsWith("ts-shodan") ? "shodan" : "vt";
   await chrome.storage.session.set({ pending: { type, query: q, ts: Date.now() } });
   try { await chrome.sidePanel.open({ windowId: tab.windowId }); } catch {}
 });
